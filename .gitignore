@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+publish/
+stage/
+artifacts/
+out/
+
+# .NET user-specific files
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# IDEs
+.vs/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Claude Code (local-only settings)
+.claude/settings.local.json
