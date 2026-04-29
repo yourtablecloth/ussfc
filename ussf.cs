@@ -93,12 +93,43 @@ string displayName;
 string? extension;
 byte[] headerBuffer;
 
+// Sentinel: shallow detection saw MZ; caller must run a deep PE-content scan.
+const int ExeNeedsDeepScan = 0;
+
+// Cap on how many bytes to buffer from stdin when deep-scanning a piped EXE.
+const int MaxStdinDeepScanBytes = 64 * 1024 * 1024;
+
+// Native equivalents of the original PEiD-based branches in TestExeFile (ussf.au3).
+// Order = priority: first match wins, mirroring the Select/Case order in the original.
+// Strings are matched as case-sensitive ASCII byte sequences inside the PE binary.
+(byte[] Pattern, int Msg, string Label)[] ExeSignatures = new (byte[], int, string)[]
+{
+    (Encoding.ASCII.GetBytes("NullsoftInst"),                      3, "NSIS"),
+    (Encoding.ASCII.GetBytes("Inno Setup"),                        4, "Inno Setup"),
+    (Encoding.ASCII.GetBytes("InstallShield"),                     6, "InstallShield"),
+    (Encoding.ASCII.GetBytes("Installshield"),                     6, "InstallShield (alt case)"),
+    (Encoding.ASCII.GetBytes("WiseMain"),                          7, "Wise Installer"),
+    (new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07 },            8, "RAR SFX"),
+    (new byte[] { 0x4D, 0x53, 0x43, 0x46, 0x00, 0x00, 0x00, 0x00 }, 9, "CAB SFX"),
+    (new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C },           11, "7-Zip"),
+    (Encoding.ASCII.GetBytes("WinZip Self-Extractor"),            14, "WinZip SFX"),
+    (new byte[] { 0x50, 0x4B, 0x03, 0x04 },                       10, "ZIP SFX"),
+};
+
+int messageNumber;
+
 if (stdinMode)
 {
     displayName = "<stdin>";
     extension = null;
     using var stdin = Console.OpenStandardInput();
-    headerBuffer = ReadHeaderBytes(stdin, 512);
+    headerBuffer = ReadHeaderBytes(stdin, 4096);
+    messageNumber = DetectFromBytes(headerBuffer, extension);
+    if (messageNumber == ExeNeedsDeepScan)
+    {
+        var fullData = AppendStreamUpTo(stdin, headerBuffer, MaxStdinDeepScanBytes);
+        messageNumber = DetectExeKindFromBuffer(fullData);
+    }
 }
 else
 {
@@ -113,10 +144,14 @@ else
     displayName = Path.GetFileName(filePath!);
     extension = Path.GetExtension(filePath!).ToLowerInvariant();
     using var fs = new FileStream(filePath!, FileMode.Open, FileAccess.Read);
-    headerBuffer = ReadHeaderBytes(fs, 512);
+    headerBuffer = ReadHeaderBytes(fs, 4096);
+    messageNumber = DetectFromBytes(headerBuffer, extension);
+    if (messageNumber == ExeNeedsDeepScan)
+    {
+        fs.Position = 0;
+        messageNumber = DetectExeKindFromStream(fs, headerBuffer);
+    }
 }
-
-int messageNumber = DetectFromBytes(headerBuffer, extension);
 if (messageNumber > 0 && Messages.ContainsKey(messageNumber))
 {
     var msg = Messages[messageNumber];
@@ -153,6 +188,7 @@ else
         -1 => "Corrupted EXE: invalid MZ header.",
         -2 => "Corrupted MSI: invalid header.",
         -3 => "Invalid REG file format.",
+        -7 => "Windows PE file detected, but not a recognized installer or archive.",
         _ => "Unknown or unsupported file type."
     };
 
@@ -255,8 +291,20 @@ static int DetectFromBytes(byte[] header, string? extension)
     if (HeaderMatches(header, "D0CF11E0A1B11AE1000000000000000000000000000000003E000300FEFF090006"))
         return 16; // MSI (OLE Compound Document)
 
-    if (HeaderMatches(header, "4D5A")) // MZ -> EXE
-        return 3; // Assume NSIS (extend for further detection)
+    // Raw archives (file IS the archive, not an SFX): mirror original messages 12/13.
+    if (header.Length >= 6
+        && header[0] == 0x37 && header[1] == 0x7A
+        && header[2] == 0xBC && header[3] == 0xAF
+        && header[4] == 0x27 && header[5] == 0x1C)
+        return 12; // Unknown 7-Zip Archive
+
+    if (header.Length >= 4
+        && header[0] == 0x50 && header[1] == 0x4B
+        && header[2] == 0x03 && header[3] == 0x04)
+        return 13; // Unknown ZIP Archive
+
+    if (HeaderMatches(header, "4D5A")) // MZ -> EXE: caller performs deep scan
+        return ExeNeedsDeepScan;
 
     // Text-based detection
     if (IsRegContent(header))
@@ -276,4 +324,114 @@ static int DetectFromBytes(byte[] header, string? extension)
         return 1;
 
     return -6; // Not supported
+}
+
+// PE section-table inspection for UPX0/UPX1/UPX2 — exact, not heuristic.
+static bool HasUpxSections(byte[] head)
+{
+    if (head.Length < 0x40 || head[0] != (byte)'M' || head[1] != (byte)'Z')
+        return false;
+    int peOffset = BitConverter.ToInt32(head, 0x3C);
+    if (peOffset < 0 || peOffset + 24 > head.Length)
+        return false;
+    if (head[peOffset] != (byte)'P' || head[peOffset + 1] != (byte)'E')
+        return false;
+    int numSections = BitConverter.ToUInt16(head, peOffset + 6);
+    int sizeOfOptHdr = BitConverter.ToUInt16(head, peOffset + 20);
+    int sectionTable = peOffset + 24 + sizeOfOptHdr;
+    for (int i = 0; i < numSections; i++)
+    {
+        int nameOff = sectionTable + i * 40;
+        if (nameOff + 4 > head.Length) break;
+        if (head[nameOff] == (byte)'U' && head[nameOff + 1] == (byte)'P' && head[nameOff + 2] == (byte)'X'
+            && (head[nameOff + 3] == (byte)'0' || head[nameOff + 3] == (byte)'1' || head[nameOff + 3] == (byte)'2'))
+            return true;
+    }
+    return false;
+}
+
+int PickFromHits(bool[] hits)
+{
+    for (int i = 0; i < ExeSignatures.Length; i++)
+        if (hits[i]) return ExeSignatures[i].Msg;
+    return -7; // PE but no recognized installer/archive signature
+}
+
+// Deep scan when input is a stream we can rewind (file).
+int DetectExeKindFromStream(FileStream fs, byte[] head)
+{
+    if (HasUpxSections(head))
+        return 15;
+
+    var hits = new bool[ExeSignatures.Length];
+    int maxPattern = 0;
+    foreach (var s in ExeSignatures)
+        if (s.Pattern.Length > maxPattern) maxPattern = s.Pattern.Length;
+    int overlap = Math.Max(maxPattern - 1, 0);
+
+    const int chunkSize = 4 * 1024 * 1024; // 4 MB
+    var buf = new byte[chunkSize];
+    int prevTail = 0;
+
+    while (true)
+    {
+        int read = fs.Read(buf, prevTail, buf.Length - prevTail);
+        if (read == 0) break;
+        int valid = prevTail + read;
+        var span = new ReadOnlySpan<byte>(buf, 0, valid);
+
+        for (int i = 0; i < ExeSignatures.Length; i++)
+        {
+            if (hits[i]) continue;
+            if (span.IndexOf(ExeSignatures[i].Pattern.AsSpan()) >= 0)
+                hits[i] = true;
+        }
+
+        // Highest-priority hit found? Stop early.
+        for (int i = 0; i < ExeSignatures.Length; i++)
+        {
+            if (hits[i]) return ExeSignatures[i].Msg;
+        }
+
+        if (read < buf.Length - prevTail) break; // EOF
+        int tailLen = Math.Min(overlap, valid);
+        if (tailLen > 0)
+            Buffer.BlockCopy(buf, valid - tailLen, buf, 0, tailLen);
+        prevTail = tailLen;
+    }
+
+    return PickFromHits(hits);
+}
+
+// Deep scan when input came from stdin (single buffered blob).
+int DetectExeKindFromBuffer(byte[] data)
+{
+    if (HasUpxSections(data))
+        return 15;
+    var span = new ReadOnlySpan<byte>(data);
+    var hits = new bool[ExeSignatures.Length];
+    for (int i = 0; i < ExeSignatures.Length; i++)
+    {
+        if (span.IndexOf(ExeSignatures[i].Pattern.AsSpan()) >= 0)
+            hits[i] = true;
+    }
+    return PickFromHits(hits);
+}
+
+// Drain `stream` (after the bytes already in `prefix`) up to `maxAdditional` more bytes.
+static byte[] AppendStreamUpTo(Stream stream, byte[] prefix, int maxAdditional)
+{
+    using var ms = new MemoryStream();
+    ms.Write(prefix, 0, prefix.Length);
+    var buf = new byte[64 * 1024];
+    int total = 0;
+    while (total < maxAdditional)
+    {
+        int want = Math.Min(buf.Length, maxAdditional - total);
+        int read = stream.Read(buf, 0, want);
+        if (read == 0) break;
+        ms.Write(buf, 0, read);
+        total += read;
+    }
+    return ms.ToArray();
 }
