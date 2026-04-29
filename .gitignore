@@ -5,6 +5,8 @@ publish/
 stage/
 artifacts/
 out/
+nupkg/
+*.nupkg
 
 # .NET user-specific files
 *.user

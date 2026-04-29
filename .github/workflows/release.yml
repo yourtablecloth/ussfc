@@ -76,9 +76,46 @@ jobs:
           path: ussfc-${{ matrix.rid }}.*
           if-no-files-found: error
 
+  pack-tool:
+    name: Pack .NET tool (NuGet)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack file-based app as dotnet tool
+        shell: bash
+        run: |
+          dotnet pack ussf.cs -c Release -o nupkg
+
+      - name: Upload nupkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ussfc-nupkg
+          path: nupkg/*.nupkg
+          if-no-files-found: error
+
+      - name: Push to NuGet.org
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+        shell: bash
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for pkg in nupkg/*.nupkg; do
+            dotnet nuget push "$pkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
   release:
     name: Create GitHub Release
-    needs: publish
+    needs: [publish, pack-tool]
     if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
     runs-on: ubuntu-latest
     steps:

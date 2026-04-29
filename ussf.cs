@@ -5,6 +5,19 @@
 #:property FileVersion=1.4.1.2
 #:property InformationalVersion=1.4.1.2
 
+#:property PackageId=ussfc
+#:property ToolCommandName=ussfc
+#:property Authors=Jung-Hyun Nam
+#:property Company=yourtablecloth
+#:property Description=Universal Silent Setup Finder Console — identifies Windows installer types (NSIS, Inno, InstallShield, Wise, MSI, 7-Zip/CAB/ZIP/RAR SFX, UPX, etc.) and the silent-install command line for each. Ported from the original AutoIt USSF by Alexandru Avadanii.
+#:property PackageProjectUrl=https://github.com/yourtablecloth/ussfc
+#:property RepositoryUrl=https://github.com/yourtablecloth/ussfc
+#:property RepositoryType=git
+#:property PackageLicenseExpression=Apache-2.0
+#:property PackageReadmeFile=README.md
+#:property PackageTags=installer;silent-install;setup;nsis;inno-setup;installshield;wise;msi;7zip;cab;cli;dotnet-tool
+#:property PackageRequireLicenseAcceptance=false
+
 // Copyright 2025 Alexandru Avadanii
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
