@@ -25,7 +25,6 @@ jobs:
           - { os: windows-11-arm,   rid: win-arm64,   ext: .exe, archive: zip    }
           - { os: ubuntu-latest,    rid: linux-x64,   ext: '',   archive: tar.gz }
           - { os: ubuntu-24.04-arm, rid: linux-arm64, ext: '',   archive: tar.gz }
-          - { os: macos-13,         rid: osx-x64,     ext: '',   archive: tar.gz }
           - { os: macos-latest,     rid: osx-arm64,   ext: '',   archive: tar.gz }
 
     steps:
