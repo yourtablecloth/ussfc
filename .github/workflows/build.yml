@@ -1,0 +1,78 @@
+name: Build
+
+# Publishes the `ussfc` .NET tool package to NuGet.org using Trusted Publishing
+# (OIDC) instead of a long-lived API key.
+#
+# The nuget.org Trusted Publishing policy is bound to this exact workflow file
+# name (build.yml) and the `production` GitHub Environment referenced below, so
+# neither may be renamed without updating the policy on nuget.org.
+#
+# Prerequisites (configured outside this file):
+#   - A Trusted Publishing policy on nuget.org:
+#       Repository Owner: yourtablecloth | Repository: ussfc
+#       Workflow: build.yml | Environment: production
+#   - A `production` Environment in the repo settings (Settings -> Environments).
+#   - A `NUGET_USER` secret holding the nuget.org account/profile name
+#     (the username, NOT the email address).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test tests/Ussf.Core.Tests/Ussf.Core.Tests.csproj -c Release
+
+  pack-and-publish:
+    name: Pack & publish .NET tool (Trusted Publishing)
+    needs: test
+    runs-on: ubuntu-latest
+    # Must match the Environment named in the nuget.org Trusted Publishing policy.
+    environment: production
+    permissions:
+      id-token: write   # request the GitHub OIDC token for NuGet Trusted Publishing
+      contents: read    # actions/checkout
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack file-based app as dotnet tool
+        run: dotnet pack ussf.cs -c Release -o nupkg
+
+      - name: NuGet login (OIDC -> short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        shell: bash
+        run: |
+          for pkg in nupkg/*.nupkg; do
+            dotnet nuget push "$pkg" \
+              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
