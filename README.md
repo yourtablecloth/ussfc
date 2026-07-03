@@ -9,7 +9,7 @@
 Given an installer (or any binary stream), `ussfc` identifies the packaging format and prints the silent-install command line to use.
 
 - **Version:** 1.4.1.2 (inherited from the upstream AutoIt project)
-- **Runtime:** .NET 10 file-based app (single `.cs` source, no `.csproj`)
+- **Runtime:** .NET 10 file-based CLI (`ussf.cs`) over a small, unit-tested detection library (`src/Ussf.Core`)
 - **License:** Apache-2.0
 
 ---
@@ -141,10 +141,28 @@ Detection combines binary-signature matching (MZ, OLE Compound Document, etc.) w
 
 ## Building from source
 
+### Project layout
+
+```text
+ussf.cs                        # file-based CLI entry point (arg parsing, I/O, output)
+src/Ussf.Core/                 # InstallerDetector — the pure, testable detection logic
+tests/Ussf.Core.Tests/         # xUnit test suite for the detection logic
+```
+
+`ussf.cs` references the core library with a `#:project` directive, so `dotnet run`,
+`dotnet publish`, and `dotnet pack` all keep working on the single file while the
+detection logic lives in a normal library that unit tests can reference.
+
 ### Quick run
 
 ```bash
 dotnet run ussf.cs -- <args>
+```
+
+### Run the tests
+
+```bash
+dotnet test tests/Ussf.Core.Tests
 ```
 
 ### Publish a single-file binary
