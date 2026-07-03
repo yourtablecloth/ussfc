@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore tests/Ussf.Core.Tests/Ussf.Core.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/Ussf.Core.Tests/Ussf.Core.Tests.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/Ussf.Core.Tests/Ussf.Core.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Smoke-test the CLI
+        run: |
+          printf 'MZ' > /tmp/probe.bin
+          printf 'NullsoftInst' >> /tmp/probe.bin
+          dotnet run ussf.cs -- /tmp/probe.bin
