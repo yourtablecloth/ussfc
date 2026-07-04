@@ -2,10 +2,10 @@
 
 #:project src/Ussf.Core/Ussf.Core.csproj
 
-#:property Version=1.4.1.2
-#:property AssemblyVersion=1.4.1.2
-#:property FileVersion=1.4.1.2
-#:property InformationalVersion=1.4.1.2
+#:property Version=1.4.1.3
+#:property AssemblyVersion=1.4.1.3
+#:property FileVersion=1.4.1.3
+#:property InformationalVersion=1.4.1.3
 
 #:property PackageId=ussfc
 #:property ToolCommandName=ussfc
@@ -41,7 +41,7 @@
 using System.Text.Json;
 using Ussf.Core;
 
-const string Version = "1.4.1.2";
+const string Version = "1.4.1.3";
 
 bool jsonOutput = false;
 bool showHelp = false;

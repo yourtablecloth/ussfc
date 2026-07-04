@@ -8,7 +8,7 @@
 
 Given an installer (or any binary stream), `ussfc` identifies the packaging format and prints the silent-install command line to use.
 
-- **Version:** 1.4.1.2 (inherited from the upstream AutoIt project)
+- **Version:** 1.4.1.3 (the port started at the upstream AutoIt project's 1.4.1.2)
 - **Runtime:** .NET 10 file-based CLI (`ussf.cs`) over a small, unit-tested detection library (`src/Ussf.Core`)
 - **License:** Apache-2.0
 
@@ -188,13 +188,19 @@ The resulting `ussfc.<version>.nupkg` is a framework-dependent, platform-agnosti
 
 ### Continuous delivery
 
-Pushing a tag matching `v*` (e.g. `v1.4.1.2`) triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+Pushing a tag matching `v*` (e.g. `v1.4.1.3`) triggers two workflows:
 
-1. Builds NativeAOT single-file binaries for five RIDs and bundles them with `README.md` / `LICENSE`.
-2. Packs `ussf.cs` as a .NET tool NuGet package and pushes it to nuget.org (requires the `NUGET_API_KEY` repository secret).
-3. Publishes a GitHub Release with all binary archives, SHA-256 checksums, and the `.nupkg`.
+- [`.github/workflows/build.yml`](.github/workflows/build.yml) packs `ussf.cs` as a
+  .NET tool NuGet package and publishes it to nuget.org using
+  [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing)
+  (OIDC — no API key). The publish job runs in the `production` environment and
+  needs a `NUGET_USER` secret (the nuget.org profile name).
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) builds NativeAOT
+  single-file binaries for five RIDs and publishes a GitHub Release with all binary
+  archives, SHA-256 checksums, and the `.nupkg`.
 
-The workflow is also runnable on demand via the **Run workflow** button (workflow_dispatch).
+Both gate on the test suite, and both are also runnable on demand via the
+**Run workflow** button (workflow_dispatch).
 
 ---
 
@@ -203,4 +209,4 @@ The workflow is also runnable on demand via the **Run workflow** button (workflo
 - Original AutoIt implementation: **[Alexandru Avadanii](https://github.com/alexandruavadanii/USSF)** (Apache-2.0).
 - C# port and CLI design: **Jung-Hyun Nam**.
 
-The version number `1.4.1.2` is preserved from the upstream project's [`Version.au3`](https://github.com/alexandruavadanii/USSF/blob/master/Version.au3) to make the lineage explicit.
+The port began at version `1.4.1.2`, mirrored from the upstream project's [`Version.au3`](https://github.com/alexandruavadanii/USSF/blob/master/Version.au3) to make the lineage explicit. Releases from `1.4.1.3` onward carry the C# port's own changes.
